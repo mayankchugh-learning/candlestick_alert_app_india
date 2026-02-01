@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: candlestick-alert-system
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - FLASK_DEBUG=False
+      - SECRET_KEY=${SECRET_KEY:-your-production-secret-key}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///candlestick_alerts.db}
+      - USE_MOCK_DATA=${USE_MOCK_DATA:-false}
+      - EMAILJS_USER_ID=${EMAILJS_USER_ID:-}
+      - EMAILJS_SERVICE_ID=${EMAILJS_SERVICE_ID:-}
+      - EMAILJS_TEMPLATE_ID=${EMAILJS_TEMPLATE_ID:-}
+    volumes:
+      - ./data:/app/data
+      - ./instance:/app/instance
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Optional: PostgreSQL database for production
+  # Uncomment if you want to use PostgreSQL instead of SQLite
+  # db:
+  #   image: postgres:15-alpine
+  #   container_name: candlestick-db
+  #   environment:
+  #     - POSTGRES_USER=candlestick
+  #     - POSTGRES_PASSWORD=${DB_PASSWORD:-changeme}
+  #     - POSTGRES_DB=candlestick_alerts
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U candlestick"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+# volumes:
+#   postgres_data:
+
+networks:
+  default:
+    name: candlestick-network

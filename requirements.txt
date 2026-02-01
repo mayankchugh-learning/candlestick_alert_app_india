@@ -1,0 +1,29 @@
+# Candlestick Alert System - Python Dependencies
+# Install: pip install -r requirements.txt
+
+# Web Framework
+Flask>=3.0.0
+Flask-CORS>=4.0.0
+Flask-APScheduler>=1.13.1
+
+# Data Processing (using latest versions with pre-built wheels)
+pandas>=2.2.0
+numpy>=1.26.0
+python-dateutil>=2.8.0
+
+# HTTP Requests & Stock Data
+requests>=2.31.0
+yfinance>=0.2.33
+
+# Email Notifications
+python-dotenv>=1.0.0
+
+# Database
+SQLAlchemy>=2.0.23
+Flask-SQLAlchemy>=3.1.1
+
+# Utilities
+APScheduler>=3.10.4
+
+# Production Server
+gunicorn>=21.2.0

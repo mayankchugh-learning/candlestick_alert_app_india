@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CandleAlert - Indian Stock Candlestick Alert System</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Chart.js for candlestick visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    
+    <!-- Lightweight Charts (TradingView) -->
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    
+    <!-- EmailJS -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom Tailwind Config -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            200: '#bfdbfe',
+                            300: '#93c5fd',
+                            400: '#60a5fa',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                            900: '#1e3a8a',
+                        },
+                        success: '#10b981',
+                        danger: '#ef4444',
+                        warning: '#f59e0b',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        .pulse-animation {
+            animation: pulse 2s infinite;
+        }
+        
+        /* Custom card hover effect */
+        .card-hover {
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .card-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+        }
+        
+        /* Tab styling */
+        .tab-active {
+            border-bottom: 2px solid #3b82f6;
+            color: #3b82f6;
+        }
+        
+        /* Signal badges */
+        .signal-buy {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+        .signal-sell {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        }
+        
+        /* Progress bar */
+        .progress-bar {
+            background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%);
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen">
+    <!-- Navigation -->
+    <nav class="bg-slate-800 border-b border-slate-700 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <span class="text-2xl font-bold text-primary-400">
+                            <i class="fas fa-chart-candlestick mr-2"></i>CandleAlert
+                        </span>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="lastUpdated" class="text-sm text-slate-400"></span>
+                    <button id="refreshBtn" onclick="refreshDashboard()" class="bg-primary-600 hover:bg-primary-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                        <i class="fas fa-sync-alt mr-2"></i>Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Tabs -->
+        <div class="border-b border-slate-700 mb-8">
+            <nav class="flex space-x-8" aria-label="Tabs">
+                <button onclick="switchTab('dashboard')" class="tab-btn tab-active pb-4 px-1 text-sm font-medium" data-tab="dashboard">
+                    <i class="fas fa-chart-line mr-2"></i>Dashboard
+                </button>
+                <button onclick="switchTab('scanner')" class="tab-btn pb-4 px-1 text-sm font-medium text-slate-400 hover:text-white" data-tab="scanner">
+                    <i class="fas fa-search mr-2"></i>Stock Scanner
+                </button>
+                <button onclick="switchTab('alerts')" class="tab-btn pb-4 px-1 text-sm font-medium text-slate-400 hover:text-white" data-tab="alerts">
+                    <i class="fas fa-bell mr-2"></i>Alerts
+                </button>
+                <button onclick="switchTab('settings')" class="tab-btn pb-4 px-1 text-sm font-medium text-slate-400 hover:text-white" data-tab="settings">
+                    <i class="fas fa-cog mr-2"></i>Settings
+                </button>
+            </nav>
+        </div>
+
+        <!-- Dashboard Tab -->
+        <div id="dashboardTab" class="tab-content fade-in">
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div class="bg-slate-800 rounded-xl p-6 card-hover border border-slate-700">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-slate-400 text-sm">Total Stocks</p>
+                            <p id="totalStocks" class="text-3xl font-bold text-white mt-1">--</p>
+                        </div>
+                        <div class="bg-primary-600/20 p-3 rounded-lg">
+                            <i class="fas fa-chart-bar text-primary-400 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-slate-800 rounded-xl p-6 card-hover border border-slate-700">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-slate-400 text-sm">Buy Signals</p>
+                            <p id="buySignals" class="text-3xl font-bold text-green-400 mt-1">--</p>
+                        </div>
+                        <div class="bg-green-600/20 p-3 rounded-lg">
+                            <i class="fas fa-arrow-trend-up text-green-400 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-slate-800 rounded-xl p-6 card-hover border border-slate-700">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-slate-400 text-sm">Sell Signals</p>
+                            <p id="sellSignals" class="text-3xl font-bold text-red-400 mt-1">--</p>
+                        </div>
+                        <div class="bg-red-600/20 p-3 rounded-lg">
+                            <i class="fas fa-arrow-trend-down text-red-400 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-slate-800 rounded-xl p-6 card-hover border border-slate-700">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-slate-400 text-sm">Total Alerts</p>
+                            <p id="totalAlerts" class="text-3xl font-bold text-purple-400 mt-1">--</p>
+                        </div>
+                        <div class="bg-purple-600/20 p-3 rounded-lg">
+                            <i class="fas fa-bell text-purple-400 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Button -->
+            <div class="mb-8">
+                <button id="manualScanBtn" onclick="runManualScan()" class="bg-gradient-to-r from-primary-600 to-purple-600 hover:from-primary-700 hover:to-purple-700 px-6 py-3 rounded-lg font-medium text-lg transition-all transform hover:scale-105">
+                    <i class="fas fa-play mr-2"></i>Run Manual Scan
+                </button>
+            </div>
+
+            <!-- Top Signals Tables -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                <!-- Top Buy Signals -->
+                <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                    <div class="bg-green-600/10 px-6 py-4 border-b border-slate-700">
+                        <h3 class="text-lg font-semibold text-green-400">
+                            <i class="fas fa-arrow-up mr-2"></i>Top Buy Signals
+                        </h3>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-slate-700/50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Symbol</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Price</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Strength</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Date</th>
+                                </tr>
+                            </thead>
+                            <tbody id="topBuySignals" class="divide-y divide-slate-700">
+                                <tr><td colspan="4" class="px-6 py-4 text-center text-slate-400">No data available</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Top Sell Signals -->
+                <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                    <div class="bg-red-600/10 px-6 py-4 border-b border-slate-700">
+                        <h3 class="text-lg font-semibold text-red-400">
+                            <i class="fas fa-arrow-down mr-2"></i>Top Sell Signals
+                        </h3>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-slate-700/50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Symbol</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Price</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Strength</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Date</th>
+                                </tr>
+                            </thead>
+                            <tbody id="topSellSignals" class="divide-y divide-slate-700">
+                                <tr><td colspan="4" class="px-6 py-4 text-center text-slate-400">No data available</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Alerts -->
+            <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-700">
+                    <h3 class="text-lg font-semibold">
+                        <i class="fas fa-history mr-2 text-primary-400"></i>Recent Alerts
+                    </h3>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-slate-700/50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Symbol</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Signal</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Price</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Reason</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recentAlerts" class="divide-y divide-slate-700">
+                            <tr><td colspan="5" class="px-6 py-4 text-center text-slate-400">No alerts yet. Run a scan to generate alerts.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scanner Tab -->
+        <div id="scannerTab" class="tab-content hidden fade-in">
+            <div class="bg-slate-800 rounded-xl border border-slate-700 p-6 mb-8">
+                <h3 class="text-lg font-semibold mb-4">
+                    <i class="fas fa-search mr-2 text-primary-400"></i>Stock Scanner
+                </h3>
+                
+                <!-- Filters -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-2">Filter by Trend</label>
+                        <select id="trendFilter" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-primary-500">
+                            <option value="">All Trends</option>
+                            <option value="bullish">Bullish (Green)</option>
+                            <option value="bearish">Bearish (Red)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-2">Filter by Signal</label>
+                        <select id="signalFilter" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-primary-500">
+                            <option value="">All Signals</option>
+                            <option value="BUY">Buy Signals</option>
+                            <option value="SELL">Sell Signals</option>
+                        </select>
+                    </div>
+                    <div class="flex items-end">
+                        <button onclick="applyFilters()" class="w-full bg-primary-600 hover:bg-primary-700 px-4 py-2 rounded-lg font-medium transition-colors">
+                            <i class="fas fa-filter mr-2"></i>Apply Filters
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Progress Bar -->
+                <div id="scanProgress" class="hidden mb-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm text-slate-400">Scanning stocks...</span>
+                        <span id="scanProgressText" class="text-sm text-primary-400">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-700 rounded-full h-2">
+                        <div id="scanProgressBar" class="progress-bar h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Scan Button -->
+                <button id="scanAllBtn" onclick="scanAllStocks()" class="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 px-6 py-3 rounded-lg font-medium transition-all">
+                    <i class="fas fa-rocket mr-2"></i>Scan All NSE Stocks
+                </button>
+            </div>
+
+            <!-- Stock Results Table -->
+            <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+                    <h3 class="text-lg font-semibold">
+                        <i class="fas fa-list mr-2 text-primary-400"></i>Stock Results
+                    </h3>
+                    <span id="stockCount" class="text-sm text-slate-400">0 stocks</span>
+                </div>
+                <div class="overflow-x-auto max-h-96">
+                    <table class="w-full">
+                        <thead class="bg-slate-700/50 sticky top-0">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Symbol</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Price</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Change %</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Trend</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Signal</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stockResults" class="divide-y divide-slate-700">
+                            <tr><td colspan="6" class="px-6 py-4 text-center text-slate-400">Run a scan to see results</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alerts Tab -->
+        <div id="alertsTab" class="tab-content hidden fade-in">
+            <div class="bg-slate-800 rounded-xl border border-slate-700 p-6 mb-8">
+                <h3 class="text-lg font-semibold mb-4">
+                    <i class="fas fa-bell mr-2 text-primary-400"></i>Alert Management
+                </h3>
+                
+                <!-- Alert Filters -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-2">Alert Type</label>
+                        <select id="alertTypeFilter" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-primary-500">
+                            <option value="">All Types</option>
+                            <option value="BUY">Buy Alerts</option>
+                            <option value="SELL">Sell Alerts</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-2">Symbol</label>
+                        <input type="text" id="alertSymbolFilter" placeholder="e.g., RELIANCE" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-primary-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-2">Start Date</label>
+                        <input type="date" id="alertStartDate" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-primary-500">
+                    </div>
+                    <div class="flex items-end space-x-2">
+                        <button onclick="filterAlerts()" class="flex-1 bg-primary-600 hover:bg-primary-700 px-4 py-2 rounded-lg font-medium transition-colors">
+                            <i class="fas fa-search mr-2"></i>Search
+                        </button>
+                        <button onclick="exportAlerts()" class="bg-slate-600 hover:bg-slate-500 px-4 py-2 rounded-lg font-medium transition-colors">
+                            <i class="fas fa-download"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerts Table -->
+            <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+                    <h3 class="text-lg font-semibold">
+                        <i class="fas fa-list mr-2 text-primary-400"></i>All Alerts
+                    </h3>
+                    <span id="alertCount" class="text-sm text-slate-400">0 alerts</span>
+                </div>
+                <div class="overflow-x-auto max-h-[500px]">
+                    <table class="w-full">
+                        <thead class="bg-slate-700/50 sticky top-0">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Symbol</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Type</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Close Price</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Strength</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Reason</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="alertsTable" class="divide-y divide-slate-700">
+                            <tr><td colspan="6" class="px-6 py-4 text-center text-slate-400">No alerts found</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="settingsTab" class="tab-content hidden fade-in">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Email Settings -->
+                <div class="bg-slate-800 rounded-xl border border-slate-700 p-6">
+                    <h3 class="text-lg font-semibold mb-6">
+                        <i class="fas fa-envelope mr-2 text-primary-400"></i>Email Notifications
+                    </h3>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm text-slate-400 mb-2">EmailJS User ID</label>
+                            <input type="text" id="emailjsUserId" placeholder="Enter your EmailJS User ID" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-primary-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm text-slate-400 mb-2">EmailJS Service ID</label>
+                            <input type="text" id="emailjsServiceId" placeholder="Enter your EmailJS Service ID" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-primary-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm text-slate-400 mb-2">EmailJS Template ID</label>
+                            <input type="text" id="emailjsTemplateId" placeholder="Enter your EmailJS Template ID" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-primary-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm text-slate-400 mb-2">Recipient Email</label>
+                            <input type="email" id="recipientEmail" placeholder="your-email@example.com" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-primary-500">
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <input type="checkbox" id="enableEmailAlerts" class="w-5 h-5 rounded bg-slate-700 border-slate-600 text-primary-600 focus:ring-primary-500">
+                            <label for="enableEmailAlerts" class="text-sm text-slate-400">Enable automatic email alerts</label>
+                        </div>
+                        <div class="flex space-x-3 pt-4">
+                            <button onclick="saveEmailSettings()" class="flex-1 bg-primary-600 hover:bg-primary-700 px-4 py-2 rounded-lg font-medium transition-colors">
+                                <i class="fas fa-save mr-2"></i>Save Settings
+                            </button>
+                            <button onclick="testEmailNotification()" class="bg-slate-600 hover:bg-slate-500 px-4 py-2 rounded-lg font-medium transition-colors">
+                                <i class="fas fa-paper-plane mr-2"></i>Send Test
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Scan Settings -->
+                <div class="bg-slate-800 rounded-xl border border-slate-700 p-6">
+                    <h3 class="text-lg font-semibold mb-6">
+                        <i class="fas fa-cog mr-2 text-primary-400"></i>Scan Settings
+                    </h3>
+                    
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg">
+                            <div>
+                                <p class="font-medium">Automated Monthly Scan</p>
+                                <p class="text-sm text-slate-400">Runs on the 1st of every month at 9:00 AM IST</p>
+                            </div>
+                            <div class="flex items-center">
+                                <span class="w-3 h-3 bg-green-500 rounded-full mr-2 pulse-animation"></span>
+                                <span class="text-green-400 text-sm">Active</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg">
+                            <div>
+                                <p class="font-medium">Data Source</p>
+                                <p class="text-sm text-slate-400">Using Yahoo Finance API for NSE stocks</p>
+                            </div>
+                            <span class="px-3 py-1 bg-primary-600/20 text-primary-400 rounded-full text-sm">Live</span>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg">
+                            <div>
+                                <p class="font-medium">Analysis Period</p>
+                                <p class="text-sm text-slate-400">Last 2 months of candlestick data</p>
+                            </div>
+                            <span class="text-slate-400 text-sm">Monthly</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Signal Legend -->
+                <div class="bg-slate-800 rounded-xl border border-slate-700 p-6 lg:col-span-2">
+                    <h3 class="text-lg font-semibold mb-6">
+                        <i class="fas fa-info-circle mr-2 text-primary-400"></i>Signal Logic Explanation
+                    </h3>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="bg-green-600/10 border border-green-600/30 rounded-lg p-4">
+                            <h4 class="text-green-400 font-semibold mb-2">
+                                <i class="fas fa-arrow-up mr-2"></i>Buy Signal (Bullish Engulfing)
+                            </h4>
+                            <p class="text-slate-300 text-sm mb-3">Generated when:</p>
+                            <ul class="text-sm text-slate-400 space-y-1">
+                                <li>• Previous month's candle is <span class="text-red-400">red (bearish)</span></li>
+                                <li>• Current month's candle is <span class="text-green-400">green (bullish)</span></li>
+                                <li>• Current close price > Previous red candle's open price</li>
+                            </ul>
+                            <div class="mt-3 p-2 bg-slate-800 rounded text-xs text-slate-400">
+                                Example: Dec 2024 green candle closes at ₹500, above Nov 2024 red candle's open of ₹480 → BUY signal
+                            </div>
+                        </div>
+                        
+                        <div class="bg-red-600/10 border border-red-600/30 rounded-lg p-4">
+                            <h4 class="text-red-400 font-semibold mb-2">
+                                <i class="fas fa-arrow-down mr-2"></i>Sell Signal (Bearish Engulfing)
+                            </h4>
+                            <p class="text-slate-300 text-sm mb-3">Generated when:</p>
+                            <ul class="text-sm text-slate-400 space-y-1">
+                                <li>• Previous month's candle is <span class="text-green-400">green (bullish)</span></li>
+                                <li>• Current month's candle is <span class="text-red-400">red (bearish)</span></li>
+                                <li>• Current close price < Previous green candle's open price</li>
+                            </ul>
+                            <div class="mt-3 p-2 bg-slate-800 rounded text-xs text-slate-400">
+                                Example: Aug 2024 red candle closes at ₹450, below Jul 2024 green candle's open of ₹470 → SELL signal
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stock Detail Modal -->
+    <div id="stockModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-50">
+        <div class="bg-slate-800 rounded-xl border border-slate-700 w-full max-w-4xl max-h-[90vh] overflow-hidden m-4">
+            <div class="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+                <h3 id="modalTitle" class="text-lg font-semibold">Stock Details</h3>
+                <button onclick="closeStockModal()" class="text-slate-400 hover:text-white">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
+                <div id="stockChart" class="h-[400px] mb-6"></div>
+                <div id="stockDetails" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-4 right-4 transform translate-y-full opacity-0 transition-all duration-300 z-50">
+        <div class="bg-slate-800 border border-slate-700 rounded-lg px-6 py-4 shadow-xl flex items-center space-x-3">
+            <i id="toastIcon" class="fas fa-check-circle text-green-400 text-xl"></i>
+            <span id="toastMessage" class="text-white"></span>
+        </div>
+    </div>
+
+    <script>
+        // API Base URL
+        const API_BASE = '';
+
+        // Global state
+        let currentChart = null;
+        let stocksData = [];
+        let alertsData = [];
+
+        // ==================== Tab Management ====================
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.add('hidden');
+            });
+            
+            // Remove active class from all tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('tab-active');
+                btn.classList.add('text-slate-400');
+            });
+            
+            // Show selected tab
+            document.getElementById(`${tabName}Tab`).classList.remove('hidden');
+            
+            // Add active class to selected button
+            const activeBtn = document.querySelector(`[data-tab="${tabName}"]`);
+            activeBtn.classList.add('tab-active');
+            activeBtn.classList.remove('text-slate-400');
+            
+            // Load tab-specific data
+            if (tabName === 'alerts') {
+                loadAlerts();
+            } else if (tabName === 'settings') {
+                loadSettings();
+            }
+        }
+
+        // ==================== Dashboard Functions ====================
+        async function refreshDashboard() {
+            try {
+                const btn = document.getElementById('refreshBtn');
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Refreshing...';
+                btn.disabled = true;
+                
+                const response = await fetch(`${API_BASE}/api/dashboard`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateDashboardUI(data.data);
+                    showToast('Dashboard updated successfully', 'success');
+                }
+            } catch (error) {
+                console.error('Dashboard refresh error:', error);
+                showToast('Failed to refresh dashboard', 'error');
+            } finally {
+                const btn = document.getElementById('refreshBtn');
+                btn.innerHTML = '<i class="fas fa-sync-alt mr-2"></i>Refresh';
+                btn.disabled = false;
+            }
+        }
+
+        function updateDashboardUI(data) {
+            const summary = data.summary;
+            
+            // Update summary cards
+            document.getElementById('totalStocks').textContent = summary.total_stocks || '--';
+            document.getElementById('buySignals').textContent = summary.buy_signals || '0';
+            document.getElementById('sellSignals').textContent = summary.sell_signals || '0';
+            document.getElementById('totalAlerts').textContent = summary.total_alerts || '0';
+            
+            // Update last updated time
+            document.getElementById('lastUpdated').textContent = 
+                data.last_scan ? `Last scan: ${formatDate(data.last_scan.created_at)}` : '';
+            
+            // Update top buy signals table
+            updateSignalsTable('topBuySignals', data.top_buy_signals, 'BUY');
+            
+            // Update top sell signals table
+            updateSignalsTable('topSellSignals', data.top_sell_signals, 'SELL');
+            
+            // Update recent alerts table
+            updateRecentAlertsTable(data.recent_alerts);
+        }
+
+        function updateSignalsTable(tableId, signals, type) {
+            const tbody = document.getElementById(tableId);
+            
+            if (!signals || signals.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-4 text-center text-slate-400">No ${type.toLowerCase()} signals</td></tr>`;
+                return;
+            }
+            
+            tbody.innerHTML = signals.map(signal => `
+                <tr class="hover:bg-slate-700/50 cursor-pointer" onclick="viewStock('${signal.symbol}')">
+                    <td class="px-6 py-4 font-medium">${signal.symbol}</td>
+                    <td class="px-6 py-4">₹${signal.current_close?.toFixed(2) || '--'}</td>
+                    <td class="px-6 py-4">
+                        <span class="px-2 py-1 rounded-full text-xs font-medium ${type === 'BUY' ? 'bg-green-600/20 text-green-400' : 'bg-red-600/20 text-red-400'}">
+                            ${signal.strength?.toFixed(2) || '--'}%
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 text-slate-400 text-sm">${formatDate(signal.signal_date)}</td>
+                </tr>
+            `).join('');
+        }
+
+        function updateRecentAlertsTable(alerts) {
+            const tbody = document.getElementById('recentAlerts');
+            
+            if (!alerts || alerts.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-4 text-center text-slate-400">No alerts yet. Run a scan to generate alerts.</td></tr>`;
+                return;
+            }
+            
+            tbody.innerHTML = alerts.map(alert => `
+                <tr class="hover:bg-slate-700/50">
+                    <td class="px-6 py-4 font-medium">${alert.symbol}</td>
+                    <td class="px-6 py-4">
+                        <span class="px-3 py-1 rounded-full text-xs font-medium ${alert.alert_type === 'BUY' ? 'signal-buy' : 'signal-sell'}">
+                            ${alert.alert_type}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4">₹${alert.current_close?.toFixed(2) || '--'}</td>
+                    <td class="px-6 py-4 text-slate-400 text-sm truncate max-w-xs">${alert.reason || '--'}</td>
+                    <td class="px-6 py-4 text-slate-400 text-sm">${formatDate(alert.created_at)}</td>
+                </tr>
+            `).join('');
+        }
+
+        // ==================== Scan Functions ====================
+        async function runManualScan() {
+            const btn = document.getElementById('manualScanBtn');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Scanning...';
+            btn.disabled = true;
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/scan`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast(`Scan completed! Found ${data.data.summary.buy_signals_count} buy and ${data.data.summary.sell_signals_count} sell signals.`, 'success');
+                    refreshDashboard();
+                } else {
+                    showToast('Scan failed: ' + data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Scan error:', error);
+                showToast('Failed to run scan', 'error');
+            } finally {
+                btn.innerHTML = '<i class="fas fa-play mr-2"></i>Run Manual Scan';
+                btn.disabled = false;
+            }
+        }
+
+        async function scanAllStocks() {
+            const btn = document.getElementById('scanAllBtn');
+            const progressDiv = document.getElementById('scanProgress');
+            const progressBar = document.getElementById('scanProgressBar');
+            const progressText = document.getElementById('scanProgressText');
+            
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Scanning...';
+            progressDiv.classList.remove('hidden');
+            
+            // Simulate progress (in real implementation, use WebSocket or SSE)
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress = Math.min(progress + Math.random() * 15, 90);
+                progressBar.style.width = `${progress}%`;
+                progressText.textContent = `${Math.round(progress)}%`;
+            }, 500);
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/scan`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                
+                clearInterval(progressInterval);
+                progressBar.style.width = '100%';
+                progressText.textContent = '100%';
+                
+                if (data.success) {
+                    stocksData = [...(data.data.buy_signals || []), ...(data.data.sell_signals || [])];
+                    updateStockResults(stocksData);
+                    showToast(`Scan completed! Processed ${data.data.summary.total_scanned} stocks.`, 'success');
+                }
+            } catch (error) {
+                console.error('Scan error:', error);
+                showToast('Failed to scan stocks', 'error');
+            } finally {
+                clearInterval(progressInterval);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-rocket mr-2"></i>Scan All NSE Stocks';
+                setTimeout(() => {
+                    progressDiv.classList.add('hidden');
+                    progressBar.style.width = '0%';
+                }, 2000);
+            }
+        }
+
+        function updateStockResults(stocks) {
+            const tbody = document.getElementById('stockResults');
+            document.getElementById('stockCount').textContent = `${stocks.length} stocks`;
+            
+            if (!stocks || stocks.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-4 text-center text-slate-400">No stocks found</td></tr>`;
+                return;
+            }
+            
+            tbody.innerHTML = stocks.map(stock => `
+                <tr class="hover:bg-slate-700/50">
+                    <td class="px-6 py-4 font-medium">${stock.symbol}</td>
+                    <td class="px-6 py-4">₹${stock.current_price?.toFixed(2) || '--'}</td>
+                    <td class="px-6 py-4">
+                        <span class="${stock.price_change_pct >= 0 ? 'text-green-400' : 'text-red-400'}">
+                            ${stock.price_change_pct >= 0 ? '+' : ''}${stock.price_change_pct?.toFixed(2) || 0}%
+                        </span>
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="px-2 py-1 rounded-full text-xs font-medium ${stock.current_trend === 'bullish' ? 'bg-green-600/20 text-green-400' : 'bg-red-600/20 text-red-400'}">
+                            ${stock.current_trend === 'bullish' ? 'Bullish' : 'Bearish'}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4">
+                        ${stock.latest_signal ? `
+                            <span class="px-2 py-1 rounded-full text-xs font-medium ${stock.latest_signal.type === 'BUY' ? 'signal-buy' : 'signal-sell'}">
+                                ${stock.latest_signal.type}
+                            </span>
+                        ` : '<span class="text-slate-500">None</span>'}
+                    </td>
+                    <td class="px-6 py-4">
+                        <button onclick="viewStock('${stock.symbol}')" class="text-primary-400 hover:text-primary-300">
+                            <i class="fas fa-chart-line mr-1"></i>View
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function applyFilters() {
+            const trendFilter = document.getElementById('trendFilter').value;
+            const signalFilter = document.getElementById('signalFilter').value;
+            
+            let filtered = [...stocksData];
+            
+            if (trendFilter) {
+                filtered = filtered.filter(s => s.current_trend === trendFilter);
+            }
+            if (signalFilter) {
+                filtered = filtered.filter(s => s.latest_signal?.type === signalFilter);
+            }
+            
+            updateStockResults(filtered);
+        }
+
+        // ==================== Alerts Functions ====================
+        async function loadAlerts() {
+            try {
+                const response = await fetch(`${API_BASE}/api/alerts`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    alertsData = data.data.alerts;
+                    updateAlertsTable(alertsData);
+                    document.getElementById('alertCount').textContent = `${data.data.total} alerts`;
+                }
+            } catch (error) {
+                console.error('Load alerts error:', error);
+            }
+        }
+
+        function updateAlertsTable(alerts) {
+            const tbody = document.getElementById('alertsTable');
+            
+            if (!alerts || alerts.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-4 text-center text-slate-400">No alerts found</td></tr>`;
+                return;
+            }
+            
+            tbody.innerHTML = alerts.map(alert => `
+                <tr class="hover:bg-slate-700/50">
+                    <td class="px-6 py-4 font-medium">${alert.symbol}</td>
+                    <td class="px-6 py-4">
+                        <span class="px-3 py-1 rounded-full text-xs font-medium ${alert.alert_type === 'BUY' ? 'signal-buy' : 'signal-sell'}">
+                            ${alert.alert_type}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4">₹${alert.current_close?.toFixed(2) || '--'}</td>
+                    <td class="px-6 py-4">
+                        <span class="${alert.alert_type === 'BUY' ? 'text-green-400' : 'text-red-400'}">
+                            ${alert.strength?.toFixed(2) || '--'}%
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 text-slate-400 text-sm truncate max-w-xs" title="${alert.reason}">${alert.reason || '--'}</td>
+                    <td class="px-6 py-4 text-slate-400 text-sm">${formatDate(alert.signal_date)}</td>
+                </tr>
+            `).join('');
+        }
+
+        function filterAlerts() {
+            const type = document.getElementById('alertTypeFilter').value;
+            const symbol = document.getElementById('alertSymbolFilter').value.toUpperCase();
+            const startDate = document.getElementById('alertStartDate').value;
+            
+            let filtered = [...alertsData];
+            
+            if (type) {
+                filtered = filtered.filter(a => a.alert_type === type);
+            }
+            if (symbol) {
+                filtered = filtered.filter(a => a.symbol.includes(symbol));
+            }
+            if (startDate) {
+                filtered = filtered.filter(a => new Date(a.signal_date) >= new Date(startDate));
+            }
+            
+            updateAlertsTable(filtered);
+            document.getElementById('alertCount').textContent = `${filtered.length} alerts`;
+        }
+
+        async function exportAlerts() {
+            try {
+                const response = await fetch(`${API_BASE}/api/alerts/export`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const blob = new Blob([JSON.stringify(data.data, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `alerts_${new Date().toISOString().split('T')[0]}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    showToast('Alerts exported successfully', 'success');
+                }
+            } catch (error) {
+                console.error('Export error:', error);
+                showToast('Failed to export alerts', 'error');
+            }
+        }
+
+        // ==================== Stock Modal Functions ====================
+        async function viewStock(symbol) {
+            const modal = document.getElementById('stockModal');
+            document.getElementById('modalTitle').textContent = `${symbol} - Stock Analysis`;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/chart/${symbol}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    renderCandlestickChart(data.data);
+                    renderStockDetails(data.data);
+                }
+            } catch (error) {
+                console.error('Load stock error:', error);
+                showToast('Failed to load stock data', 'error');
+            }
+        }
+
+        function closeStockModal() {
+            const modal = document.getElementById('stockModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            
+            if (currentChart) {
+                currentChart.remove();
+                currentChart = null;
+            }
+        }
+
+        function renderCandlestickChart(data) {
+            const container = document.getElementById('stockChart');
+            container.innerHTML = '';
+            
+            // Create chart using Lightweight Charts
+            currentChart = LightweightCharts.createChart(container, {
+                width: container.clientWidth,
+                height: 400,
+                layout: {
+                    background: { color: '#1e293b' },
+                    textColor: '#94a3b8',
+                },
+                grid: {
+                    vertLines: { color: '#334155' },
+                    horzLines: { color: '#334155' },
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                },
+                rightPriceScale: {
+                    borderColor: '#334155',
+                },
+                timeScale: {
+                    borderColor: '#334155',
+                    timeVisible: true,
+                },
+            });
+            
+            const candlestickSeries = currentChart.addCandlestickSeries({
+                upColor: '#10b981',
+                downColor: '#ef4444',
+                borderUpColor: '#10b981',
+                borderDownColor: '#ef4444',
+                wickUpColor: '#10b981',
+                wickDownColor: '#ef4444',
+            });
+            
+            // Format data for the chart
+            const chartData = data.candles.map(candle => ({
+                time: candle.date,
+                open: candle.open,
+                high: candle.high,
+                low: candle.low,
+                close: candle.close,
+            }));
+            
+            candlestickSeries.setData(chartData);
+            
+            // Add markers for signals
+            if (data.signals && data.signals.length > 0) {
+                const markers = data.signals.map(signal => ({
+                    time: signal.date,
+                    position: signal.type === 'BUY' ? 'belowBar' : 'aboveBar',
+                    color: signal.type === 'BUY' ? '#10b981' : '#ef4444',
+                    shape: signal.type === 'BUY' ? 'arrowUp' : 'arrowDown',
+                    text: signal.type,
+                }));
+                candlestickSeries.setMarkers(markers);
+            }
+            
+            currentChart.timeScale().fitContent();
+        }
+
+        function renderStockDetails(data) {
+            const container = document.getElementById('stockDetails');
+            const latestCandle = data.candles[data.candles.length - 1];
+            const latestSignal = data.signals[data.signals.length - 1];
+            
+            container.innerHTML = `
+                <div class="bg-slate-700/50 rounded-lg p-4">
+                    <p class="text-slate-400 text-sm">Current Price</p>
+                    <p class="text-xl font-bold">₹${latestCandle.close.toFixed(2)}</p>
+                </div>
+                <div class="bg-slate-700/50 rounded-lg p-4">
+                    <p class="text-slate-400 text-sm">Open Price</p>
+                    <p class="text-xl font-bold">₹${latestCandle.open.toFixed(2)}</p>
+                </div>
+                <div class="bg-slate-700/50 rounded-lg p-4">
+                    <p class="text-slate-400 text-sm">High</p>
+                    <p class="text-xl font-bold text-green-400">₹${latestCandle.high.toFixed(2)}</p>
+                </div>
+                <div class="bg-slate-700/50 rounded-lg p-4">
+                    <p class="text-slate-400 text-sm">Low</p>
+                    <p class="text-xl font-bold text-red-400">₹${latestCandle.low.toFixed(2)}</p>
+                </div>
+                ${latestSignal ? `
+                    <div class="col-span-2 md:col-span-4 bg-${latestSignal.type === 'BUY' ? 'green' : 'red'}-600/10 border border-${latestSignal.type === 'BUY' ? 'green' : 'red'}-600/30 rounded-lg p-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <span class="px-3 py-1 rounded-full text-sm font-medium ${latestSignal.type === 'BUY' ? 'signal-buy' : 'signal-sell'}">
+                                    ${latestSignal.type} Signal
+                                </span>
+                                <p class="text-slate-300 mt-2">${latestSignal.reason}</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-slate-400 text-sm">Signal Strength</p>
+                                <p class="text-2xl font-bold ${latestSignal.type === 'BUY' ? 'text-green-400' : 'text-red-400'}">${latestSignal.strength.toFixed(2)}%</p>
+                            </div>
+                        </div>
+                    </div>
+                ` : ''}
+            `;
+        }
+
+        // ==================== Settings Functions ====================
+        async function loadSettings() {
+            try {
+                const response = await fetch(`${API_BASE}/api/settings`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const settings = data.data;
+                    document.getElementById('emailjsUserId').value = settings.emailjs_user_id || '';
+                    document.getElementById('emailjsServiceId').value = settings.emailjs_service_id || '';
+                    document.getElementById('emailjsTemplateId').value = settings.emailjs_template_id || '';
+                    document.getElementById('recipientEmail').value = settings.recipient_email || '';
+                    document.getElementById('enableEmailAlerts').checked = settings.enable_email_alerts === 'true';
+                }
+            } catch (error) {
+                console.error('Load settings error:', error);
+            }
+        }
+
+        async function saveEmailSettings() {
+            const settings = {
+                emailjs_user_id: document.getElementById('emailjsUserId').value,
+                emailjs_service_id: document.getElementById('emailjsServiceId').value,
+                emailjs_template_id: document.getElementById('emailjsTemplateId').value,
+                recipient_email: document.getElementById('recipientEmail').value,
+                enable_email_alerts: document.getElementById('enableEmailAlerts').checked.toString()
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/settings`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Initialize EmailJS if credentials are provided
+                    if (settings.emailjs_user_id) {
+                        emailjs.init(settings.emailjs_user_id);
+                    }
+                    showToast('Settings saved successfully', 'success');
+                } else {
+                    showToast('Failed to save settings', 'error');
+                }
+            } catch (error) {
+                console.error('Save settings error:', error);
+                showToast('Failed to save settings', 'error');
+            }
+        }
+
+        async function testEmailNotification() {
+            const userId = document.getElementById('emailjsUserId').value;
+            const serviceId = document.getElementById('emailjsServiceId').value;
+            const templateId = document.getElementById('emailjsTemplateId').value;
+            const recipientEmail = document.getElementById('recipientEmail').value;
+            
+            if (!userId || !serviceId || !templateId || !recipientEmail) {
+                showToast('Please fill in all email settings first', 'error');
+                return;
+            }
+            
+            try {
+                emailjs.init(userId);
+                
+                await emailjs.send(serviceId, templateId, {
+                    to_email: recipientEmail,
+                    subject: 'CandleAlert - Test Notification',
+                    message: 'This is a test email from the Candlestick Alert System. If you received this, your email notifications are configured correctly!'
+                });
+                
+                showToast('Test email sent successfully!', 'success');
+            } catch (error) {
+                console.error('Email test error:', error);
+                showToast('Failed to send test email. Check your EmailJS settings.', 'error');
+            }
+        }
+
+        // ==================== Utility Functions ====================
+        function formatDate(dateString) {
+            if (!dateString) return '--';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-IN', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toastIcon');
+            const msg = document.getElementById('toastMessage');
+            
+            msg.textContent = message;
+            
+            if (type === 'success') {
+                icon.className = 'fas fa-check-circle text-green-400 text-xl';
+            } else if (type === 'error') {
+                icon.className = 'fas fa-exclamation-circle text-red-400 text-xl';
+            } else {
+                icon.className = 'fas fa-info-circle text-primary-400 text-xl';
+            }
+            
+            toast.classList.remove('translate-y-full', 'opacity-0');
+            
+            setTimeout(() => {
+                toast.classList.add('translate-y-full', 'opacity-0');
+            }, 3000);
+        }
+
+        // ==================== Initialize ====================
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshDashboard();
+        });
+
+        // Close modal on escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeStockModal();
+            }
+        });
+
+        // Close modal on outside click
+        document.getElementById('stockModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeStockModal();
+            }
+        });
+    </script>
+</body>
+</html>
