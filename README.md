@@ -8,7 +8,7 @@ A Python-based application that analyzes monthly candlestick patterns for Indian
 - **Stock Scanner**: Scan all NSE stocks with real-time progress tracking
 - **Signal Generation**: Automated buy/sell signals based on candlestick patterns
 - **Alerts Management**: View, filter, and export generated alerts
-- **Email Notifications**: Configure EmailJS for automated alert notifications
+- **Email Notifications**: Configure SMTP for automated alert notifications
 - **Automated Monthly Scans**: Scheduled scans on the 1st of every month
 - **Interactive Charts**: TradingView-style candlestick charts with signal markers
 
@@ -147,16 +147,29 @@ candlestick_alert_app_india/
 - `POST /api/settings` - Update application settings
 - `POST /api/settings/email/test` - Test email configuration
 
-## Email Setup (EmailJS)
+## Email Setup (SMTP)
 
-1. Create an account at [EmailJS](https://www.emailjs.com/)
-2. Add an email service (Gmail, Outlook, etc.)
-3. Create an email template with these variables:
-   - `{{to_email}}` - Recipient email
-   - `{{subject}}` - Email subject
-   - `{{message}}` - Alert message content
-4. Copy your User ID, Service ID, and Template ID
-5. Configure in the Settings tab of the dashboard
+1. **For Gmail:**
+   - Enable 2-Factor Authentication on your Google account
+   - Generate an App Password: https://myaccount.google.com/apppasswords
+   - Use the 16-character app password in `MAIL_PASSWORD`
+
+2. **Configure in .env file:**
+   ```
+   MAIL_SERVER=smtp.gmail.com
+   MAIL_PORT=587
+   MAIL_USE_TLS=True
+   MAIL_USERNAME=your-email@gmail.com
+   MAIL_PASSWORD=your-16-char-app-password
+   MAIL_DEFAULT_SENDER=your-email@gmail.com
+   ```
+
+3. **For other email providers:**
+   - Outlook: `smtp.office365.com` (Port 587)
+   - Yahoo: `smtp.mail.yahoo.com` (Port 587)
+   - Custom SMTP: Use your provider's settings
+
+4. **Test email in Settings tab** of the dashboard
 
 ## Data Sources
 

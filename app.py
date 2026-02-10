@@ -8,6 +8,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask import Flask, jsonify, request, send_from_directory, render_template_string
+from flask_mail import Mail, Message
 
 
 def utcnow():
@@ -15,6 +16,7 @@ def utcnow():
     return datetime.now(timezone.utc)
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from flask_mail import Mail, Message
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 import logging
@@ -40,8 +42,18 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-pro
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///candlestick_alerts.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Initialize database
+# Email Configuration
+app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
+app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True').lower() == 'true'
+app.config['MAIL_USE_SSL'] = os.getenv('MAIL_USE_SSL', 'False').lower() == 'true'
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', os.getenv('MAIL_USERNAME'))
+
+# Initialize extensions
 db = SQLAlchemy(app)
+mail = Mail(app)
 
 # Initialize analyzer
 USE_MOCK_DATA = os.getenv('USE_MOCK_DATA', 'true').lower() == 'true'
@@ -49,6 +61,61 @@ analyzer = CandlestickAnalyzer(use_mock_data=USE_MOCK_DATA)
 
 
 # ==================== Database Models ====================
+
+def send_alert_email(alerts):
+    """Send email notification for new alerts."""
+    try:
+        # Get email settings
+        enable_alerts = Settings.query.filter_by(key='enable_email_alerts').first()
+        recipient_email = Settings.query.filter_by(key='recipient_email').first()
+        
+        if not enable_alerts or enable_alerts.value != 'true':
+            return
+        
+        if not recipient_email or not recipient_email.value:
+            logger.warning("No recipient email configured")
+            return
+        
+        if not alerts:
+            return
+        
+        # Prepare email content
+        buy_signals = [a for a in alerts if a.alert_type == 'BUY']
+        sell_signals = [a for a in alerts if a.alert_type == 'SELL']
+        
+        body = f"""CandleAlert - New Trading Signals Detected
+
+Scan Summary:
+- Total Alerts: {len(alerts)}
+- Buy Signals: {len(buy_signals)}
+- Sell Signals: {len(sell_signals)}
+
+"""
+        
+        if buy_signals:
+            body += "\n🟢 BUY SIGNALS:\n"
+            for alert in buy_signals[:10]:  # Top 10
+                body += f"  • {alert.symbol}: ₹{alert.current_close:.2f} (Strength: {alert.strength:.2f}%)\n"
+        
+        if sell_signals:
+            body += "\n🔴 SELL SIGNALS:\n"
+            for alert in sell_signals[:10]:  # Top 10
+                body += f"  • {alert.symbol}: ₹{alert.current_close:.2f} (Strength: {alert.strength:.2f}%)\n"
+        
+        body += "\n\nView full details at: http://localhost:5000\n"
+        
+        # Send email
+        msg = Message(
+            subject=f'CandleAlert: {len(alerts)} New Trading Signals',
+            recipients=[recipient_email.value],
+            body=body
+        )
+        mail.send(msg)
+        logger.info(f"Alert email sent to {recipient_email.value}")
+        
+    except Exception as e:
+        logger.error(f"Failed to send alert email: {str(e)}")
+
 
 class Stock(db.Model):
     """Stock model for tracking analyzed stocks."""
@@ -350,6 +417,7 @@ def run_scan():
         db.session.add(scan_record)
         
         # Save/update stocks and alerts
+        new_alerts = []
         for stock_data in results['all_stocks']:
             stock = Stock.query.filter_by(symbol=stock_data['symbol']).first()
             if not stock:
@@ -378,10 +446,15 @@ def run_scan():
                     reason=signal['reason']
                 )
                 db.session.add(alert)
+                new_alerts.append(alert)
             
             db.session.add(stock)
         
         db.session.commit()
+        
+        # Send email notification for new alerts
+        if new_alerts:
+            send_alert_email(new_alerts)
         
         return jsonify({
             'success': True,
@@ -462,16 +535,31 @@ def test_email():
         if not test_email:
             return jsonify({'success': False, 'error': 'Email address required'}), 400
         
-        # In a real implementation, this would send a test email
-        # For now, we'll just validate the configuration
+        # Check if SMTP is configured
+        if not app.config['MAIL_USERNAME'] or not app.config['MAIL_PASSWORD']:
+            return jsonify({
+                'success': False, 
+                'error': 'SMTP not configured. Please set MAIL_USERNAME and MAIL_PASSWORD in .env file. See EMAIL_SETUP_GUIDE.md for instructions.'
+            }), 400
+        
+        # Send test email
+        msg = Message(
+            subject='CandleAlert - Test Email',
+            recipients=[test_email],
+            body='This is a test email from CandleAlert. Your email configuration is working correctly!'
+        )
+        mail.send(msg)
+        
         return jsonify({
             'success': True,
-            'message': f'Test email would be sent to {test_email}',
-            'note': 'Email sending is handled by EmailJS on the frontend'
+            'message': f'Test email sent successfully to {test_email}'
         })
     except Exception as e:
         logger.error(f"Test email error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        error_msg = str(e)
+        if 'WinError 10060' in error_msg or 'Connection' in error_msg:
+            error_msg = 'Cannot connect to SMTP server. Check MAIL_SERVER, MAIL_PORT, and firewall settings in .env file.'
+        return jsonify({'success': False, 'error': error_msg}), 500
 
 
 @app.route('/api/stock-list', methods=['GET'])
@@ -527,6 +615,7 @@ def scheduled_monthly_scan():
             db.session.add(scan_record)
             
             # Process results (similar to manual scan)
+            new_alerts = []
             for stock_data in results['all_stocks']:
                 stock = Stock.query.filter_by(symbol=stock_data['symbol']).first()
                 if not stock:
@@ -554,10 +643,16 @@ def scheduled_monthly_scan():
                         reason=signal['reason']
                     )
                     db.session.add(alert)
+                    new_alerts.append(alert)
                 
                 db.session.add(stock)
             
             db.session.commit()
+            
+            # Send email notification for new alerts
+            if new_alerts:
+                send_alert_email(new_alerts)
+            
             logger.info(f"Scheduled scan completed. {results['summary']['total_scanned']} stocks processed.")
             
         except Exception as e:

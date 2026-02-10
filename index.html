@@ -16,10 +16,8 @@
     <!-- Lightweight Charts (TradingView) -->
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     
-    <!-- EmailJS -->
-    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
-    
     <!-- Font Awesome -->
+    <link rel="stylesheet" type="text/css" href="/static/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <!-- Custom Tailwind Config -->
@@ -423,7 +421,7 @@
                                 <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Type</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Close Price</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Strength</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Reason</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase w-96">Reason</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Date</th>
                             </tr>
                         </thead>
@@ -441,22 +439,10 @@
                 <!-- Email Settings -->
                 <div class="bg-slate-800 rounded-xl border border-slate-700 p-6">
                     <h3 class="text-lg font-semibold mb-6">
-                        <i class="fas fa-envelope mr-2 text-primary-400"></i>Email Notifications
+                        <i class="fas fa-envelope mr-2 text-primary-400"></i>Email Notifications (SMTP)
                     </h3>
                     
                     <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm text-slate-400 mb-2">EmailJS User ID</label>
-                            <input type="text" id="emailjsUserId" placeholder="Enter your EmailJS User ID" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-primary-500">
-                        </div>
-                        <div>
-                            <label class="block text-sm text-slate-400 mb-2">EmailJS Service ID</label>
-                            <input type="text" id="emailjsServiceId" placeholder="Enter your EmailJS Service ID" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-primary-500">
-                        </div>
-                        <div>
-                            <label class="block text-sm text-slate-400 mb-2">EmailJS Template ID</label>
-                            <input type="text" id="emailjsTemplateId" placeholder="Enter your EmailJS Template ID" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-primary-500">
-                        </div>
                         <div>
                             <label class="block text-sm text-slate-400 mb-2">Recipient Email</label>
                             <input type="email" id="recipientEmail" placeholder="your-email@example.com" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-primary-500">
@@ -464,6 +450,10 @@
                         <div class="flex items-center space-x-3">
                             <input type="checkbox" id="enableEmailAlerts" class="w-5 h-5 rounded bg-slate-700 border-slate-600 text-primary-600 focus:ring-primary-500">
                             <label for="enableEmailAlerts" class="text-sm text-slate-400">Enable automatic email alerts</label>
+                        </div>
+                        <div class="bg-slate-700/50 rounded-lg p-3 text-xs text-slate-400">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            Configure SMTP settings in .env file (MAIL_SERVER, MAIL_USERNAME, MAIL_PASSWORD)
                         </div>
                         <div class="flex space-x-3 pt-4">
                             <button onclick="saveEmailSettings()" class="flex-1 bg-primary-600 hover:bg-primary-700 px-4 py-2 rounded-lg font-medium transition-colors">
@@ -879,7 +869,11 @@
                             ${alert.strength?.toFixed(2) || '--'}%
                         </span>
                     </td>
-                    <td class="px-6 py-4 text-slate-400 text-sm truncate max-w-xs" title="${alert.reason}">${alert.reason || '--'}</td>
+                    <td class="px-6 py-4 text-slate-400 text-sm" title="${alert.reason}">
+                        <div class="max-w-xs overflow-hidden">
+                            ${alert.reason || '--'}
+                        </div>
+                    </td>
                     <td class="px-6 py-4 text-slate-400 text-sm">${formatDate(alert.signal_date)}</td>
                 </tr>
             `).join('');
@@ -934,16 +928,24 @@
             modal.classList.remove('hidden');
             modal.classList.add('flex');
             
+            // Show loading state
+            document.getElementById('stockChart').innerHTML = '<div class="flex items-center justify-center h-full"><i class="fas fa-spinner fa-spin text-4xl text-primary-400"></i></div>';
+            document.getElementById('stockDetails').innerHTML = '';
+            
             try {
                 const response = await fetch(`${API_BASE}/api/chart/${symbol}`);
                 const data = await response.json();
                 
-                if (data.success) {
+                if (data.success && data.data) {
                     renderCandlestickChart(data.data);
                     renderStockDetails(data.data);
+                } else {
+                    document.getElementById('stockChart').innerHTML = '<div class="flex items-center justify-center h-full text-slate-400">No chart data available</div>';
+                    showToast('No data available for ' + symbol, 'error');
                 }
             } catch (error) {
                 console.error('Load stock error:', error);
+                document.getElementById('stockChart').innerHTML = '<div class="flex items-center justify-center h-full text-red-400">Failed to load data</div>';
                 showToast('Failed to load stock data', 'error');
             }
         }
@@ -952,74 +954,54 @@
             const modal = document.getElementById('stockModal');
             modal.classList.add('hidden');
             modal.classList.remove('flex');
-            
-            if (currentChart) {
-                currentChart.remove();
-                currentChart = null;
-            }
         }
 
         function renderCandlestickChart(data) {
             const container = document.getElementById('stockChart');
             container.innerHTML = '';
             
-            // Create chart using Lightweight Charts
-            currentChart = LightweightCharts.createChart(container, {
-                width: container.clientWidth,
-                height: 400,
-                layout: {
-                    background: { color: '#1e293b' },
-                    textColor: '#94a3b8',
-                },
-                grid: {
-                    vertLines: { color: '#334155' },
-                    horzLines: { color: '#334155' },
-                },
-                crosshair: {
-                    mode: LightweightCharts.CrosshairMode.Normal,
-                },
-                rightPriceScale: {
-                    borderColor: '#334155',
-                },
-                timeScale: {
-                    borderColor: '#334155',
-                    timeVisible: true,
-                },
-            });
-            
-            const candlestickSeries = currentChart.addCandlestickSeries({
-                upColor: '#10b981',
-                downColor: '#ef4444',
-                borderUpColor: '#10b981',
-                borderDownColor: '#ef4444',
-                wickUpColor: '#10b981',
-                wickDownColor: '#ef4444',
-            });
-            
-            // Format data for the chart
-            const chartData = data.candles.map(candle => ({
-                time: candle.date,
-                open: candle.open,
-                high: candle.high,
-                low: candle.low,
-                close: candle.close,
-            }));
-            
-            candlestickSeries.setData(chartData);
-            
-            // Add markers for signals
-            if (data.signals && data.signals.length > 0) {
-                const markers = data.signals.map(signal => ({
-                    time: signal.date,
-                    position: signal.type === 'BUY' ? 'belowBar' : 'aboveBar',
-                    color: signal.type === 'BUY' ? '#10b981' : '#ef4444',
-                    shape: signal.type === 'BUY' ? 'arrowUp' : 'arrowDown',
-                    text: signal.type,
-                }));
-                candlestickSeries.setMarkers(markers);
+            if (!data.candles || data.candles.length === 0) {
+                container.innerHTML = '<div class="flex items-center justify-center h-full text-slate-400">No candle data available</div>';
+                return;
             }
             
-            currentChart.timeScale().fitContent();
+            // Create simple table view instead of chart
+            const html = `
+                <div class="overflow-auto h-full">
+                    <table class="w-full text-sm">
+                        <thead class="bg-slate-700/50 sticky top-0">
+                            <tr>
+                                <th class="px-4 py-2 text-left">Date</th>
+                                <th class="px-4 py-2 text-right">Open</th>
+                                <th class="px-4 py-2 text-right">High</th>
+                                <th class="px-4 py-2 text-right">Low</th>
+                                <th class="px-4 py-2 text-right">Close</th>
+                                <th class="px-4 py-2 text-center">Trend</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-700">
+                            ${data.candles.map(candle => {
+                                const isGreen = candle.close >= candle.open;
+                                return `
+                                    <tr class="hover:bg-slate-700/30">
+                                        <td class="px-4 py-2">${candle.date}</td>
+                                        <td class="px-4 py-2 text-right">₹${candle.open.toFixed(2)}</td>
+                                        <td class="px-4 py-2 text-right text-green-400">₹${candle.high.toFixed(2)}</td>
+                                        <td class="px-4 py-2 text-right text-red-400">₹${candle.low.toFixed(2)}</td>
+                                        <td class="px-4 py-2 text-right font-bold ${isGreen ? 'text-green-400' : 'text-red-400'}">₹${candle.close.toFixed(2)}</td>
+                                        <td class="px-4 py-2 text-center">
+                                            <span class="px-2 py-1 rounded text-xs ${isGreen ? 'bg-green-600/20 text-green-400' : 'bg-red-600/20 text-red-400'}">
+                                                ${isGreen ? '▲ Bullish' : '▼ Bearish'}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            container.innerHTML = html;
         }
 
         function renderStockDetails(data) {
@@ -1071,9 +1053,6 @@
                 
                 if (data.success) {
                     const settings = data.data;
-                    document.getElementById('emailjsUserId').value = settings.emailjs_user_id || '';
-                    document.getElementById('emailjsServiceId').value = settings.emailjs_service_id || '';
-                    document.getElementById('emailjsTemplateId').value = settings.emailjs_template_id || '';
                     document.getElementById('recipientEmail').value = settings.recipient_email || '';
                     document.getElementById('enableEmailAlerts').checked = settings.enable_email_alerts === 'true';
                 }
@@ -1084,9 +1063,6 @@
 
         async function saveEmailSettings() {
             const settings = {
-                emailjs_user_id: document.getElementById('emailjsUserId').value,
-                emailjs_service_id: document.getElementById('emailjsServiceId').value,
-                emailjs_template_id: document.getElementById('emailjsTemplateId').value,
                 recipient_email: document.getElementById('recipientEmail').value,
                 enable_email_alerts: document.getElementById('enableEmailAlerts').checked.toString()
             };
@@ -1101,10 +1077,6 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    // Initialize EmailJS if credentials are provided
-                    if (settings.emailjs_user_id) {
-                        emailjs.init(settings.emailjs_user_id);
-                    }
                     showToast('Settings saved successfully', 'success');
                 } else {
                     showToast('Failed to save settings', 'error');
@@ -1116,29 +1088,30 @@
         }
 
         async function testEmailNotification() {
-            const userId = document.getElementById('emailjsUserId').value;
-            const serviceId = document.getElementById('emailjsServiceId').value;
-            const templateId = document.getElementById('emailjsTemplateId').value;
             const recipientEmail = document.getElementById('recipientEmail').value;
             
-            if (!userId || !serviceId || !templateId || !recipientEmail) {
-                showToast('Please fill in all email settings first', 'error');
+            if (!recipientEmail) {
+                showToast('Please enter recipient email first', 'error');
                 return;
             }
             
             try {
-                emailjs.init(userId);
-                
-                await emailjs.send(serviceId, templateId, {
-                    to_email: recipientEmail,
-                    subject: 'CandleAlert - Test Notification',
-                    message: 'This is a test email from the Candlestick Alert System. If you received this, your email notifications are configured correctly!'
+                const response = await fetch(`${API_BASE}/api/settings/email/test`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: recipientEmail })
                 });
                 
-                showToast('Test email sent successfully!', 'success');
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('Test email sent successfully!', 'success');
+                } else {
+                    showToast('Failed to send test email: ' + data.error, 'error');
+                }
             } catch (error) {
                 console.error('Email test error:', error);
-                showToast('Failed to send test email. Check your EmailJS settings.', 'error');
+                showToast('Failed to send test email. Check SMTP settings in .env file.', 'error');
             }
         }
 

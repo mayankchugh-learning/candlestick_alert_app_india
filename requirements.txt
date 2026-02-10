@@ -17,6 +17,7 @@ yfinance>=0.2.33
 
 # Email Notifications
 python-dotenv>=1.0.0
+Flask-Mail>=0.9.1
 
 # Database
 SQLAlchemy>=2.0.23
